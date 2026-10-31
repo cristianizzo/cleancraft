@@ -1480,11 +1480,11 @@ fn sort_menus_have_a_name() {
     nav(&mut h, "App Remover").unwrap();
     assert_eq!(
         h.get_by_label("Sort").value().as_deref(),
-        Some("Sort by size")
+        Some("Sort by name")
     );
     click(&mut h, "Sort");
-    click(&mut h, "Sort by name");
-    assert!(h.get_by_label("Sort").value().as_deref() == Some("Sort by name"));
+    click(&mut h, "Sort by size");
+    assert!(h.get_by_label("Sort").value().as_deref() == Some("Sort by size"));
 }
 
 /// PAR-4 (fixed): egui reports a visible link's text as a plain label, so the Disk Map's

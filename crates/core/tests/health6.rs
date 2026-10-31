@@ -1,6 +1,7 @@
 //! Mac Health facts, thresholds and recommendations on fake Macs; Disk Map growth.
 
 use cleancraft_core::FeatureId;
+use cleancraft_core::Settings;
 use cleancraft_core::health::{self, Card, Facts, Level, State};
 use cleancraft_core::monitor::{Battery, BatteryReading, Pressure};
 use cleancraft_core::route::AppRoute;
@@ -9,7 +10,7 @@ use cleancraft_core::testkit_health::{self as th, GB};
 const NOW: i64 = 1_790_000_000;
 
 fn facts(mac: &cleancraft_core::testkit::FakeMac) -> Facts {
-    health::gather(&mac.env, NOW, &|_| {})
+    health::gather(&mac.env, &Settings::default(), NOW, &|_| {})
 }
 
 fn card<'a>(cards: &'a [Card], rule: &str) -> Option<&'a Card> {
@@ -178,6 +179,24 @@ fn unsigned_startup_items_need_attention() {
         "1 startup item is not signed by a known developer"
     );
     assert_eq!(c.route, AppRoute::Feature(FeatureId::LoginItems));
+}
+
+#[test]
+fn ignored_startup_items_stop_the_warning() {
+    let mac = th::calm_mac(NOW);
+    th::launch_agent(&mac, "sh.brew.postgresql@16", false);
+    assert_eq!(
+        facts(&mac).startup.as_ref().unwrap().weak,
+        vec!["sh.brew.postgresql@16"]
+    );
+    let mut settings = Settings::default();
+    settings.ignore.push(
+        mac.env
+            .home_path("Library/LaunchAgents/sh.brew.postgresql@16.plist"),
+    );
+    let f = health::gather(&mac.env, &settings, NOW, &|_| {});
+    assert!(f.startup.as_ref().unwrap().weak.is_empty());
+    assert!(card(&health::recommendations(&f), "startup_unsigned").is_none());
 }
 
 #[test]

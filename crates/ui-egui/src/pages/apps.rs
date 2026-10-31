@@ -121,8 +121,8 @@ pub const LARGE_APP: u64 = 1_000_000_000;
 
 /// The app list's sort orders.
 pub const APP_SORTS: [kit_list::SortKey; 5] = [
-    kit_list::BY_SIZE,
     kit_list::BY_NAME,
+    kit_list::BY_SIZE,
     kit_list::SortKey {
         key: "opened",
         label: "Sort by last opened",
@@ -266,6 +266,9 @@ pub struct Batch {
     pub results: Vec<uninstaller::AppResult>,
     /// Apps put back from the result screen.
     pub undone: BTreeSet<PathBuf>,
+    /// Uninstall was asked while some ticked apps still ran: quit them, then uninstall
+    /// everything once none of them run any more.
+    pub auto_uninstall: bool,
 }
 
 /// Quitting the app whose detail is open.
@@ -877,6 +880,7 @@ fn open_batch(app: &mut CleanApp) {
                 checked_running: Some(std::time::Instant::now()),
                 results: Vec::new(),
                 undone: BTreeSet::new(),
+                auto_uninstall: false,
             });
             app.apps.error = None;
         }
@@ -991,6 +995,27 @@ fn app_name(p: &Path) -> String {
         .unwrap_or_default()
 }
 
+/// After a quit asked for by the Uninstall button (not the separate Quit All banner): once
+/// the quitting is done, whatever that freed up, carry on to the confirmation on its own
+/// (the same as Quit All followed by a click on Uninstall, just in one step). An app that
+/// refuses to quit stays running and out of the plan; the others still go.
+fn maybe_auto_uninstall(app: &mut CleanApp) {
+    let Some(b) = app.apps.batch.as_ref() else {
+        return;
+    };
+    if !b.auto_uninstall || b.quitting.is_some() {
+        return;
+    }
+    let ready = b.plan.selected_count() > 0;
+    if let Some(b) = app.apps.batch.as_mut() {
+        b.auto_uninstall = false;
+    }
+    if ready {
+        app.apps.pending = app.apps.batch.as_ref().map(|b| b.plan.clone());
+        app.apps.phase = Phase::Confirm(Action::UninstallApps);
+    }
+}
+
 /// Quitting and the running check of the review. Returns true while something runs.
 fn poll_batch(app: &mut CleanApp) -> bool {
     let mut busy = false;
@@ -1056,6 +1081,7 @@ fn poll_batch(app: &mut CleanApp) -> bool {
                 if quit.len() == 1 { "It" } else { "They" }
             ));
         }
+        maybe_auto_uninstall(app);
         return busy;
     }
     // While an app of the review runs, look again every moment: when it quits by itself its
@@ -1095,6 +1121,7 @@ fn poll_batch(app: &mut CleanApp) -> bool {
                         if gone.len() == 1 { "has" } else { "have" },
                         if gone.len() == 1 { "it" } else { "them" }
                     ));
+                    maybe_auto_uninstall(app);
                 }
             }
             None if job.is_dead() => b.still_running = None,
@@ -3613,11 +3640,14 @@ fn batch_review(app: &mut CleanApp, ui: &mut Ui) {
         );
         ui.add_space(space::M);
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            let can = selected_apps > 0;
-            let label = if selected_apps == 1 {
+            // Ticking an app is always enough: if it still runs, Uninstall quits it first,
+            // then carries on, instead of blocking until a separate Quit All.
+            let ticked = apps.len();
+            let can = ticked > 0 && quitting.is_empty();
+            let label = if ticked == 1 {
                 "Uninstall 1 App".to_string()
             } else {
-                format!("Uninstall {selected_apps} Apps")
+                format!("Uninstall {ticked} Apps")
             };
             let kind = if can {
                 kit::Kind::Danger
@@ -3627,11 +3657,18 @@ fn batch_review(app: &mut CleanApp, ui: &mut Ui) {
             let un = ui
                 .add_enabled_ui(can, |ui| kit::pill(ui, &t, &label, kind, None))
                 .inner
-                .on_disabled_hover_text(crate::tr("Quit the running apps first."));
+                .on_disabled_hover_text(crate::tr("Quitting the running apps..."));
             if un.clicked() && can {
                 app.act();
-                app.apps.pending = app.apps.batch.as_ref().map(|b| b.plan.clone());
-                app.apps.phase = Phase::Confirm(Action::UninstallApps);
+                if running.is_empty() {
+                    app.apps.pending = app.apps.batch.as_ref().map(|b| b.plan.clone());
+                    app.apps.phase = Phase::Confirm(Action::UninstallApps);
+                } else {
+                    if let Some(b) = app.apps.batch.as_mut() {
+                        b.auto_uninstall = true;
+                    }
+                    ask_batch_quit(app, running.clone());
+                }
             }
             if kit::pill(ui, &t, "Scan Again", kit::Kind::Secondary, None)
                 .on_hover_text(crate::tr("Look at the apps' files again"))
@@ -3640,10 +3677,17 @@ fn batch_review(app: &mut CleanApp, ui: &mut Ui) {
                 app.act();
                 rebuild_batch(app);
             }
-            if !can {
-                kit::bar_hint(ui, &t, "Quit the running apps to uninstall them.");
-            } else if !running.is_empty() {
-                kit::bar_hint(ui, &t, "Running apps stay until you quit them.");
+            if !running.is_empty() {
+                kit::bar_hint(
+                    ui,
+                    &t,
+                    &format!(
+                        "{} {} running. Uninstall quits {} first.",
+                        join_names(&running.iter().map(|p| app_name(p)).collect::<Vec<_>>()),
+                        if running.len() == 1 { "is" } else { "are" },
+                        if running.len() == 1 { "it" } else { "them" }
+                    ),
+                );
             }
         });
     });

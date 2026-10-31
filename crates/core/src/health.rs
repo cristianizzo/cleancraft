@@ -584,13 +584,25 @@ pub struct Facts {
 
 /// Read every fact (commands through `env.sys`; slow parts: one `mdls` per app, one
 /// `codesign` per startup item, `top` for a second). Run it off the UI thread.
-pub fn gather(env: &Env, now: i64, progress: &dyn Fn(&str)) -> Facts {
-    gather_metered(env, now, progress, &crate::progress::Progress::new())
+pub fn gather(
+    env: &Env,
+    settings: &crate::settings::Settings,
+    now: i64,
+    progress: &dyn Fn(&str),
+) -> Facts {
+    gather_metered(
+        env,
+        settings,
+        now,
+        progress,
+        &crate::progress::Progress::new(),
+    )
 }
 
 /// [`gather`] reporting into `meter`: its three steps (disk and memory, apps, startup items).
 pub fn gather_metered(
     env: &Env,
+    settings: &crate::settings::Settings,
     now: i64,
     progress: &dyn Fn(&str),
     meter: &crate::progress::Progress,
@@ -637,7 +649,10 @@ pub fn gather_metered(
     progress("Reading startup items");
     let uid = crate::tasks::current_uid(env).ok();
     let (items, _) = crate::startup::list_launch_items(env, uid);
-    let mine: Vec<_> = items.iter().filter(|i| !i.apple && i.enabled).collect();
+    let mine: Vec<_> = items
+        .iter()
+        .filter(|i| !i.apple && i.enabled && !settings.is_ignored(&i.plist))
+        .collect();
     f.startup = Some(StartupFacts {
         enabled: mine.len(),
         weak: mine

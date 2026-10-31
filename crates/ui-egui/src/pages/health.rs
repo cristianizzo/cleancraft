@@ -77,10 +77,11 @@ pub fn refresh(app: &mut CleanApp) {
         return;
     }
     let env = app.env.clone();
+    let settings = app.settings.clone();
     app.health.job = Some(Job::start_metered(app.sync, move |meter| {
         let now = chrono::Utc::now().timestamp();
         Read {
-            facts: health::gather_metered(&env, now, &|s| meter.set_step(s), meter),
+            facts: health::gather_metered(&env, &settings, now, &|s| meter.set_step(s), meter),
             history: space_history::load(&env).history,
             maps: health::map_summaries(&env),
         }

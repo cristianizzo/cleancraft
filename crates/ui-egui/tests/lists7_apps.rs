@@ -106,7 +106,7 @@ fn macos_apps_are_hidden_until_asked_for_and_never_selectable() {
     let mut h = harness(&m.mac);
     go(&mut h);
     // Default: hidden, out of the totals, and said so.
-    assert_eq!(rows(&h), ["Viewer", "Editor", "Jotter"]);
+    assert_eq!(rows(&h), ["Editor", "Jotter", "Viewer"]);
     assert!(
         has_text(&h, "in 3 apps (apps only), 1 from macOS hidden"),
         "headline"
@@ -210,17 +210,17 @@ fn every_filter_narrows_with_its_count_and_is_remembered() {
     click(&mut h, "Setapp (1)");
     h.key_press(egui::Key::Escape);
     settle(&mut h);
-    assert_eq!(rows(&h), ["Viewer", "Jotter"]);
+    assert_eq!(rows(&h), ["Jotter", "Viewer"]);
     assert!(has(&h, "Remove filter App Store"), "a chip per filter");
     filter(&mut h, "Unused (1)");
     assert_eq!(rows(&h), ["Viewer"]);
     // A chip turns its filter off.
     click(&mut h, "Remove filter Unused");
-    assert_eq!(rows(&h), ["Viewer", "Jotter"]);
+    assert_eq!(rows(&h), ["Jotter", "Viewer"]);
     // Remembered after a relaunch, the search is not.
     type_into(&mut h, "Search apps", "j");
     let mut h2 = relaunch(&m);
-    assert_eq!(rows(&h2), ["Viewer", "Jotter"]);
+    assert_eq!(rows(&h2), ["Jotter", "Viewer"]);
     assert!(h2.state().apps.search.is_empty());
     assert!(has(&h2, "Showing 2 of 3 apps"));
     click(&mut h2, "Clear Filters");
@@ -247,9 +247,10 @@ fn every_sort_and_direction_works_and_is_remembered() {
     go(&mut h);
     assert_eq!(
         h.get_by_label("Sort").value().as_deref(),
-        Some("Sort by size")
+        Some("Sort by name")
     );
-    assert_eq!(rows(&h), ["Viewer", "Editor", "Jotter"]);
+    assert_eq!(rows(&h), ["Editor", "Jotter", "Viewer"]);
+    sort(&mut h, "Sort by size");
     sort(&mut h, "Smallest first");
     assert_eq!(rows(&h), ["Jotter", "Editor", "Viewer"]);
     assert_eq!(

@@ -319,14 +319,14 @@ fn keyboard_and_pointer_selection() {
     h.key_press(egui::Key::Space);
     settle(&mut h);
     assert!(picked(&h).is_empty());
-    // Cmd-click toggles; Shift-click ticks the range from it (sorted by size: Viewer,
-    // Editor, Jotter).
+    // Cmd-click toggles; Shift-click ticks the range from it (sorted by name: Editor,
+    // Jotter, Viewer).
     let viewer = h.get_by_label("Viewer").rect();
     let jotter = h.get_by_label("Jotter").rect();
     click_at(&mut h, viewer.center(), egui::Modifiers::COMMAND);
     click_at(&mut h, jotter.center(), egui::Modifiers::SHIFT);
     settle(&mut h);
-    let mut want = vec![m.viewer.clone(), m.editor.clone(), m.jotter.clone()];
+    let mut want = vec![m.viewer.clone(), m.jotter.clone()];
     want.sort();
     assert_eq!(picked(&h), want);
     assert!(!has(&h, "Back to Apps"));
@@ -341,9 +341,8 @@ fn keyboard_and_pointer_selection() {
         h.output().platform_output.cursor_icon,
         egui::CursorIcon::PointingHand
     );
-    // Sort by size: biggest first, sizes of the whole bundle.
-    // (Safari, part of macOS, is hidden from the list by default.)
-    let rows: Vec<String> = ["Viewer", "Editor", "Jotter"]
+    // Default sort: by name. (Safari, part of macOS, is hidden from the list by default.)
+    let rows: Vec<String> = ["Editor", "Jotter", "Viewer"]
         .iter()
         .map(|n| n.to_string())
         .collect();
@@ -400,7 +399,9 @@ fn a_running_app_locks_only_its_group_and_quit_all_unlocks() {
     }
     let jot = shown(&m, &m.sure[2].1[0]);
     assert!(!h.get_by_label(&jot).accesskit_node().is_disabled());
-    assert!(has(&h, "Uninstall 1 App"));
+    // Ticking a running app no longer blocks Uninstall: all three apps are offered together,
+    // and clicking it quits the running ones first (REVIEW apps4: Uninstall asks to quit).
+    assert!(has(&h, "Uninstall 3 Apps"));
     // Quit All: Viewer quits, Editor shows a save dialog and stays.
     let quit_key = |id: &str| {
         std::iter::once("/usr/bin/osascript".to_string())
@@ -423,14 +424,16 @@ fn a_running_app_locks_only_its_group_and_quit_all_unlocks() {
     for p in &m.sure[1].1 {
         assert!(!h.get_by_label(&shown(&m, p)).accesskit_node().is_disabled());
     }
-    assert!(has(&h, "Uninstall 2 Apps"));
+    assert!(has(&h, "Uninstall 3 Apps"));
     // Force Quit asks first; Cancel changes nothing.
     click(&mut h, "Force Quit Editor");
     assert!(has(&h, "Force quit Editor?"));
     click(&mut h, "Cancel");
     assert!(!f.calls().iter().any(|c| c.starts_with("/bin/kill")));
-    // Uninstall the two that can go; Editor stays with every file.
-    click(&mut h, "Uninstall 2 Apps");
+    // Uninstall tries Editor again (it still refuses), then carries on with the two that
+    // can go; Editor stays with every file.
+    click(&mut h, "Uninstall 3 Apps");
+    settle(&mut h);
     assert!(has_text(
         &h,
         "Editor is running and stays until you quit it."

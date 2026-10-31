@@ -213,6 +213,26 @@ pub fn ui(app: &mut CleanApp, ui: &mut Ui, f: FeatureId) {
                 app.act();
                 start_loading(app);
             }
+            let ready_ids: Vec<&str> = TASKS
+                .iter()
+                .filter(|info| matches!(app.tasks.ready.get(info.id), Some(Ok(_))))
+                .map(|info| info.id)
+                .collect();
+            let all_selected = !ready_ids.is_empty()
+                && ready_ids.iter().all(|id| app.tasks.selected.contains(*id));
+            if !ready_ids.is_empty() {
+                if all_selected {
+                    if kit::secondary(ui, &t, "Select None") {
+                        app.act();
+                        app.tasks.selected.clear();
+                    }
+                } else if kit::secondary(ui, &t, "Select All") {
+                    app.act();
+                    for id in ready_ids {
+                        app.tasks.selected.insert(id.to_string());
+                    }
+                }
+            }
         });
     });
     ui.add_space(6.0);

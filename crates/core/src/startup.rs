@@ -358,12 +358,21 @@ pub fn launch_item_at(
         .program
         .as_ref()
         .is_some_and(|pr| pr.starts_with('/') && env.sys_path(pr).exists());
-    let signer = match &lp.program {
-        Some(pr) if program_exists => signer_of(env, pr),
-        Some(_) => Signer::Missing,
-        None => Signer::Unknown {
-            message: "no program named".into(),
-        },
+    let signer = if label == crate::login_agent::LABEL {
+        // CleanCraft's own menu bar agent: never flag it as suspicious, whatever this build
+        // was signed with.
+        Signer::Developer {
+            authority: "CleanCraft".into(),
+            team: None,
+        }
+    } else {
+        match &lp.program {
+            Some(pr) if program_exists => signer_of(env, pr),
+            Some(_) => Signer::Missing,
+            None => Signer::Unknown {
+                message: "no program named".into(),
+            },
+        }
     };
     let enabled = match overrides.get(&label) {
         Some(disabled) => !disabled,
