@@ -16,6 +16,10 @@
 //!   `spctl`, all through `env.sys`). An event comes only when a rule matches or the program
 //!   is unsigned or ad hoc signed in a launch location. It opens Threat Check with that finding
 //!   selected for review ([`preselect_threat`]). Nothing is ever quarantined by the watcher.
+//! - **New download.** With the same switch, new files and folders in `~/Downloads` are read
+//!   with Apple's malware rules and the abuse.ch sample list, like a deep scan
+//!   ([`crate::xprotect::walk`]). A match opens Threat Check on it, and is kept in a short list
+//!   ([`flagged`]) that every Quick check reads again, so it stays listed until it is moved.
 //!
 //! Limits: one notification per item (a small seen-list in CleanCraft's data folder), bursts
 //! are coalesced (an installer writing 200 files is one item; several items found within
@@ -46,6 +50,7 @@ use crate::fsutil::{children, human_size, items};
 use crate::plan::{FeatureId, Plan};
 use crate::settings::Settings;
 use crate::startup::{self, Domain};
+use crate::xprotect;
 
 // ---------------------------------------------------------------------------------------------
 // What the agent gets
@@ -66,6 +71,8 @@ pub enum WatchKind {
     StartupItem,
     /// A new or changed app Threat Check flags.
     NewApp,
+    /// A download that matches Apple's malware rules or a known sample.
+    Download,
     /// The Trash watch cannot read the Trash.
     NeedsFullDiskAccess,
 }
@@ -406,6 +413,7 @@ enum Area {
     Trash,
     Apps,
     Launch(Domain),
+    Downloads,
 }
 
 impl Area {
@@ -569,6 +577,7 @@ impl Engine {
             for d in Domain::ALL {
                 roots.push((Area::Launch(d), d.path(&env)));
             }
+            roots.push((Area::Downloads, env.home_path("Downloads")));
         }
         let roots = roots
             .into_iter()
@@ -780,6 +789,12 @@ impl Engine {
             Area::Trash => is_app(&item),
             Area::Apps => is_app(&item),
             Area::Launch(_) => item.extension().is_some_and(|e| e == "plist"),
+            // A file still downloading arrives again under its final name.
+            Area::Downloads => !item.extension().is_some_and(|e| {
+                ["crdownload", "download", "part", "partial"]
+                    .iter()
+                    .any(|x| e.eq_ignore_ascii_case(x))
+            }),
         };
         if !wanted {
             return;
@@ -842,8 +857,9 @@ impl Engine {
         }
         for (p, area) in ready {
             self.pending.remove(&p);
-            if area == Area::Trash {
-                for r in self.roots.iter_mut().filter(|r| r.area == Area::Trash) {
+            // Looked at: a later change of the folder alone does not read it again.
+            if matches!(area, Area::Trash | Area::Downloads) {
+                for r in self.roots.iter_mut().filter(|r| r.area == area) {
                     r.known.insert(p.clone());
                 }
             }
@@ -899,7 +915,8 @@ impl Engine {
                 WatchKind::TrashedApp => 0,
                 WatchKind::StartupItem => 1,
                 WatchKind::NewApp => 2,
-                WatchKind::NeedsFullDiskAccess => 3,
+                WatchKind::Download => 3,
+                WatchKind::NeedsFullDiskAccess => 4,
             };
             by_kind.entry(k).or_default().push(f);
         }
@@ -916,6 +933,7 @@ impl Engine {
             Area::Trash => self.examine_trashed(p),
             Area::Apps => self.examine_app(p),
             Area::Launch(d) => self.examine_launch(p, d),
+            Area::Downloads => self.examine_download(p),
         }
     }
 
@@ -1040,6 +1058,82 @@ impl Engine {
             bytes: 0,
         })
     }
+
+    /// A download (a file, or a folder read whole) with the deep scan's checks.
+    fn examine_download(&self, p: &Path) -> Option<Finding> {
+        let link = fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink());
+        if link || self.moved_by_cleancraft(p) {
+            return None;
+        }
+        let rules = xprotect::load(&self.env).ok()?;
+        let settings = Settings::load(&self.env);
+        let found = xprotect::walk(
+            &rules,
+            &[p.to_path_buf()],
+            &|q| settings.is_ignored(q),
+            &|| false,
+            &mut |_, _| {},
+        );
+        let (file, hits) = found.hits.into_iter().next()?;
+        let target = malware::hit_target(&file);
+        let name = target.file_name()?.to_string_lossy().into_owned();
+        let what: Vec<String> = hits.iter().map(|h| h.describe()).collect();
+        let inside = file.strip_prefix(&target).unwrap_or(Path::new(""));
+        let it = if inside.as_os_str().is_empty() {
+            "It".to_string()
+        } else {
+            format!("{} inside it", inside.display())
+        };
+        flag(&self.env, &target);
+        Some(Finding {
+            id: format!(
+                "download:{}:{}",
+                self.env.display(&target),
+                short_hash(&what)
+            ),
+            kind: WatchKind::Download,
+            path: target.clone(),
+            title: format!("{name} looks like malware"),
+            body: format!(
+                "{it} matches {}. Review it in Threat Check.",
+                what.join("; ")
+            ),
+            open: AppRoute::ThreatReview(target),
+            name,
+            count: 1,
+            bytes: 0,
+        })
+    }
+}
+
+/// The watcher's list of flagged downloads (env paths).
+const FLAGGED_FILE: &str = "watch-flagged.json";
+const MAX_FLAGGED: usize = 200;
+
+/// The downloads the watcher flagged that are still there, oldest first.
+pub fn flagged(env: &Env) -> Vec<PathBuf> {
+    let list: Vec<PathBuf> = fs::read(env.data_dir().join(FLAGGED_FILE))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    list.into_iter()
+        .filter(|p| fs::symlink_metadata(p).is_ok())
+        .collect()
+}
+
+fn flag(env: &Env, p: &Path) {
+    let mut list = flagged(env);
+    list.retain(|q| q != p);
+    list.push(p.to_path_buf());
+    let list = &list[list.len().saturating_sub(MAX_FLAGGED)..];
+    let path = env.data_dir().join(FLAGGED_FILE);
+    let _ = fs::create_dir_all(env.data_dir());
+    if let Ok(b) = serde_json::to_vec(list) {
+        let tmp = path.with_extension("json.tmp");
+        if fs::write(&tmp, b).is_ok() {
+            let _ = fs::rename(tmp, &path);
+        }
+    }
 }
 
 fn is_app(p: &Path) -> bool {
@@ -1107,6 +1201,11 @@ fn merge(mut v: Vec<Finding>, now: i64) -> Option<WatchEvent> {
         ),
         WatchKind::NewApp => (
             format!("{n} new apps need a look"),
+            format!("{}. Review them in Threat Check.", names_list(&names)),
+            AppRoute::Scan(FeatureId::Malware),
+        ),
+        WatchKind::Download => (
+            format!("{n} downloads look like malware"),
             format!("{}. Review them in Threat Check.", names_list(&names)),
             AppRoute::Scan(FeatureId::Malware),
         ),

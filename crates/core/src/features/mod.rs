@@ -287,7 +287,7 @@ pub fn registry() -> Vec<Box<dyn Feature>> {
         Box::new(similar::SimilarImages),
         Box::new(space_lens::SpaceLens),
         Box::new(uninstaller::Uninstaller),
-        Box::new(malware::Malware),
+        Box::new(malware::Malware(malware::ThreatDepth::Quick)),
         Box::new(crate::startup::StartupFeature),
         Box::new(mail::MailDownloads),
         Box::new(trash::TrashBins),
@@ -298,6 +298,14 @@ pub fn registry() -> Vec<Box<dyn Feature>> {
 
 pub fn get(id: FeatureId) -> Option<Box<dyn Feature>> {
     registry().into_iter().find(|f| f.id() == id)
+}
+
+/// [`get`], with Threat Check looking as deep as `depth` (the others look the same at any depth).
+pub fn get_at(id: FeatureId, depth: malware::ThreatDepth) -> Option<Box<dyn Feature>> {
+    match id {
+        FeatureId::Malware => Some(Box::new(malware::Malware(depth))),
+        _ => get(id),
+    }
 }
 
 /// The allow-list of a feature; empty (nothing may be removed) when the feature has no plans.
@@ -479,17 +487,18 @@ fn split_around(dir: &Path, ignore: &[PathBuf], depth: usize, out: &mut Vec<Path
 
 /// Scan with a fresh context.
 pub fn scan(env: &Env, settings: &Settings, id: FeatureId) -> anyhow::Result<Plan> {
-    scan_metered(env, settings, id, &Progress::new())
+    scan_metered(env, settings, id, Default::default(), &Progress::new())
 }
 
-/// [`scan`] reporting into `meter` (the CLI's text bar).
+/// [`scan`] at a Threat Check depth, reporting into `meter` (the CLI's text bar).
 pub fn scan_metered(
     env: &Env,
     settings: &Settings,
     id: FeatureId,
+    depth: malware::ThreatDepth,
     meter: &Progress,
 ) -> anyhow::Result<Plan> {
-    let f = get(id).ok_or_else(|| anyhow::anyhow!("{} has no scan", id.title()))?;
+    let f = get_at(id, depth).ok_or_else(|| anyhow::anyhow!("{} has no scan", id.title()))?;
     let cancel = AtomicBool::new(false);
     let ctx = ScanCtx {
         env,

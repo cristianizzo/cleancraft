@@ -190,6 +190,8 @@ pub struct AgentState {
     pub memory_alert_day: Option<String>,
     /// The day of the last "the Trash is big" notification.
     pub trash_alert_day: Option<String>,
+    /// The day of the last "Apple's malware rules are old" notification.
+    pub rules_alert_day: Option<String>,
     /// What the menu offers to open, newest last (at most [`REVIEWS_MAX`]).
     pub reviews: Vec<Review>,
 }
@@ -198,6 +200,10 @@ pub struct AgentState {
 pub const MEMORY_ALERT_AFTER: i64 = 5 * 60;
 /// Days between two "the Trash is big" notifications.
 pub const TRASH_ALERT_DAYS: i64 = 7;
+/// Days between two "Apple's malware rules are old" notifications.
+pub const RULES_ALERT_DAYS: i64 = 7;
+/// What the old-rules notification opens: Threat Check.
+pub const THREAT_ROUTE: &str = "malware";
 
 /// Menu items kept for findings.
 pub const REVIEWS_MAX: usize = 3;
@@ -456,6 +462,7 @@ impl Agent {
         }
         self.memory_alert(env, settings, snap, now, &mut rep);
         self.trash_alert(env, settings, snap, now, &mut rep);
+        self.rules_alert(env, settings, now, std::time::SystemTime::now(), &mut rep);
         // Free-space history for Mac Health (at most one sample an hour).
         let _ = crate::space_history::record(env);
         let _ = self.state.save(env);
@@ -545,6 +552,51 @@ impl Agent {
                     "It holds {size}. Trash Bins shows what is in it before you empty it."
                 ),
                 route: Some("scan:trash_bins".into()),
+            },
+            rep,
+        );
+    }
+
+    /// Apple's malware rules older than [`crate::xprotect::STALE_DAYS`]: one notification a
+    /// week that opens Threat Check, which can update them. `wall` is the real clock, compared
+    /// with the date of the rules file.
+    pub fn rules_alert(
+        &mut self,
+        env: &Env,
+        settings: &Settings,
+        now: NaiveDateTime,
+        wall: std::time::SystemTime,
+        rep: &mut CheckReport,
+    ) {
+        let Some(days) = crate::xprotect::version(env)
+            .filter(|v| v.is_old(wall))
+            .and_then(|v| v.age_days(wall))
+        else {
+            return;
+        };
+        let recent = self
+            .state
+            .rules_alert_day
+            .as_deref()
+            .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+            .is_some_and(|d| (now.date() - d).num_days() < RULES_ALERT_DAYS);
+        if recent {
+            return;
+        }
+        self.state.rules_alert_day = Some(now.date().format("%Y-%m-%d").to_string());
+        let title = format!("Apple's malware rules are {days} days old");
+        self.state.push_review(Review {
+            text: format!("Review: {title}"),
+            route: THREAT_ROUTE.into(),
+        });
+        self.show(
+            env,
+            settings,
+            Notification {
+                title,
+                subtitle: None,
+                body: "Threat Check can ask macOS for the newest ones.".into(),
+                route: Some(THREAT_ROUTE.into()),
             },
             rep,
         );

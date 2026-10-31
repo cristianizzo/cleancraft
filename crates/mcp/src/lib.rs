@@ -56,6 +56,11 @@ pub fn gate(env: &Env) -> Result<Settings, String> {
 pub struct FeatureArg {
     /// Feature id from list_features, e.g. "system_junk".
     pub feature: String,
+    /// Threat Check only: "quick" (default, seconds), "deep" (also reads the programs in the
+    /// places malware lives with Apple's malware rules, minutes) or "full" (the whole startup
+    /// disk, can take long).
+    #[serde(default)]
+    pub depth: features::malware::ThreatDepth,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -236,7 +241,14 @@ impl CleanCraftMcp {
         let f = FeatureId::parse(&a.feature)
             .ok_or_else(|| format!("unknown feature '{}'", a.feature))?;
         let (settings, warning) = Settings::load_checked(&self.env);
-        let plan = features::scan(&self.env, &settings, f).map_err(|e| format!("{e:#}"))?;
+        let plan = features::scan_metered(
+            &self.env,
+            &settings,
+            f,
+            a.depth,
+            &cleancraft_core::progress::Progress::new(),
+        )
+        .map_err(|e| format!("{e:#}"))?;
         plans::save(&self.env, &plan).map_err(|e| e.to_string())?;
         let mut v = plan_view(&self.env, &plan, 0, 200);
         if let Some(w) = warning {

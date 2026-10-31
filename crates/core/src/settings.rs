@@ -60,7 +60,7 @@ pub struct Settings {
     pub notifications_paused: bool,
     /// Menu bar agent: offer to remove an app's leftovers when it is dragged to the Trash.
     pub watch_trash_offer: bool,
-    /// Menu bar agent: check new apps and startup items with Threat Check's rules.
+    /// Menu bar agent: check new apps, startup items and downloads with Threat Check's rules.
     pub watch_new_items: bool,
     /// The first-launch steps (welcome, Full Disk Access, AI apps) were shown. Set as soon
     /// as the first step shows, so they appear only on the very first launch, whatever
