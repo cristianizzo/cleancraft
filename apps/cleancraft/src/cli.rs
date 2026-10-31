@@ -31,6 +31,10 @@ pub enum Cmd {
         /// Print JSON.
         #[arg(long)]
         json: bool,
+        /// Threat Check only: quick, deep (reads programs with Apple's malware rules) or full
+        /// (the whole startup disk).
+        #[arg(long, default_value = "quick", value_parser = ["quick", "deep", "full"])]
+        depth: String,
     },
     /// Move the selected items of a saved plan to the Trash (or quarantine).
     Clean {
@@ -162,11 +166,16 @@ pub fn run_cmd(env: &Env, cmd: Cmd) -> anyhow::Result<()> {
                 );
             }
         }
-        Cmd::Scan { feature, json } => {
+        Cmd::Scan {
+            feature,
+            json,
+            depth,
+        } => {
             let f = FeatureId::parse(&feature).ok_or_else(|| {
                 anyhow::anyhow!("unknown feature '{feature}' (see `cleancraft features`)")
             })?;
-            let plan = scan_with_bar(env, &settings, f, !json)?;
+            let depth = serde_json::from_value(serde_json::Value::String(depth))?;
+            let plan = scan_with_bar(env, &settings, f, depth, !json)?;
             plans::save(env, &plan)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&plan)?);
@@ -299,12 +308,13 @@ fn scan_with_bar(
     env: &Env,
     settings: &Settings,
     f: FeatureId,
+    depth: features::malware::ThreatDepth,
     bar: bool,
 ) -> anyhow::Result<cleancraft_core::Plan> {
     use std::io::{IsTerminal, Write};
     let meter = cleancraft_core::progress::Progress::new();
     if !(bar && std::io::stderr().is_terminal()) {
-        return features::scan_metered(env, settings, f, &meter);
+        return features::scan_metered(env, settings, f, depth, &meter);
     }
     let done = std::sync::atomic::AtomicBool::new(false);
     std::thread::scope(|s| {
@@ -321,7 +331,7 @@ fn scan_with_bar(
             eprint!("\r\x1b[2K");
             let _ = std::io::stderr().flush();
         });
-        let r = features::scan_metered(env, settings, f, &meter);
+        let r = features::scan_metered(env, settings, f, depth, &meter);
         done.store(true, std::sync::atomic::Ordering::Relaxed);
         r
     })

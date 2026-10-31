@@ -93,6 +93,7 @@ fn scan_startup(mcp: &CleanCraftMcp) -> (String, String, Value) {
     let v = js(&rt()
         .block_on(mcp.scan(Parameters(FeatureArg {
             feature: "login_items".into(),
+            depth: Default::default(),
         })))
         .unwrap());
     (

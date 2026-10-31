@@ -25,3 +25,4 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 tempfile = { workspace = true }
 unicode-normalization = { workspace = true }
+yara-x = { workspace = true }
