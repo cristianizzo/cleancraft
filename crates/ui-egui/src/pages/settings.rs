@@ -561,6 +561,8 @@ pub fn ui(app: &mut CleanApp, ui: &mut Ui) {
             ui.add_space(space::M);
             changed |= dev_clutter_card(app, ui);
             ui.add_space(space::M);
+            super::threat_rules::card(app, ui);
+            ui.add_space(space::M);
             kit::card(&t).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 heading(ui, &t, Icon::Sweep, "AI assistants");

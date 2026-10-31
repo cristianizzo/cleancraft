@@ -41,6 +41,8 @@ rustix = { version = "1.1", default-features = false, features = ["std", "fs"] }
 tokio = { version = "1.53", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Threat Check deep scan: reads Apple's XProtect YARA rules (VirusTotal's YARA in Rust, BSD-3)
+yara-x = { version = "1.22", default-features = false, features = ["constant-folding", "exact-atoms", "fast-regexp", "hash-module", "macho-module", "math-module", "string-module"] }
 
 # ui (egui 0.36: the version craft-libs targets)
 egui = "0.36"

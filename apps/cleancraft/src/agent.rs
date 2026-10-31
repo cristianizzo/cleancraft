@@ -17,6 +17,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
 use chrono::NaiveDateTime;
+use cleancraft_core::known_malware;
 use cleancraft_core::monitor::{self, Sampler, Snapshot};
 use cleancraft_core::schedule::{self, Agent, CheckReport, MenuAction, MenuModel};
 use cleancraft_core::self_update::{self, Auto};
@@ -44,6 +45,8 @@ pub struct Worker {
     events: Receiver<WatchEvent>,
     /// The update check is running on its own thread.
     updating: Arc<AtomicBool>,
+    /// The abuse.ch download is running on its own thread.
+    fetching: Arc<AtomicBool>,
     /// The language setting last applied (menu and notifications follow a change).
     language: Option<String>,
 }
@@ -62,6 +65,7 @@ impl Worker {
             events_tx,
             events,
             updating: Arc::default(),
+            fetching: Arc::default(),
             language: None,
         }
     }
@@ -129,6 +133,7 @@ impl Worker {
             rep.failed.extend(r.failed);
             log_report(&rep);
             self.check_updates(&settings);
+            self.fetch_known_malware();
         }
         (self.agent.menu(self.snap.as_ref(), &settings), rep)
     }
@@ -170,6 +175,29 @@ impl Worker {
                     eprintln!("CleanCraft agent: the update did not install: {why}")
                 }
                 _ => {}
+            }
+            flag.store(false, Ordering::SeqCst);
+        };
+        if self.env.is_fake() {
+            work();
+        } else {
+            std::thread::spawn(work);
+        }
+    }
+
+    /// abuse.ch's known Mac malware samples, once a day when a key is saved; on its own thread
+    /// on a real Mac, right here on a fake one.
+    fn fetch_known_malware(&mut self) {
+        let now = chrono::Utc::now().timestamp();
+        if !known_malware::due(&self.env, now) || self.fetching.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let env = self.env.clone();
+        let flag = self.fetching.clone();
+        let work = move || {
+            match known_malware::update(&env, now) {
+                Ok(n) => eprintln!("CleanCraft agent: {n} new known malware samples from abuse.ch"),
+                Err(e) => eprintln!("CleanCraft agent: abuse.ch list: {e}"),
             }
             flag.store(false, Ordering::SeqCst);
         };

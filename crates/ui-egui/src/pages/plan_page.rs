@@ -356,7 +356,8 @@ pub fn start_scan(app: &mut CleanApp, f: FeatureId) {
     app.plan_state(f).cancel = flag.clone();
     let job = Job::start_metered(sync, move |meter| {
         let cancel = flag;
-        let Some(feat) = features::get(f) else {
+        let depth = features::large_old::ScanOptions::load(&env).threat_depth;
+        let Some(feat) = features::get_at(f, depth) else {
             return Err(format!("{} has no scan yet", f.title()));
         };
         let ctx = features::ScanCtx {

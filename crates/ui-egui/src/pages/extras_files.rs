@@ -1,5 +1,6 @@
 //! Extra controls for the file modules (Large & Old Files, Duplicates, Similar Images): where
 //! to look, before the scan, and the "Select Copies" menu above duplicate and look-alike sets.
+//! Also how deep Threat Check looks, kept with the same choices.
 //!
 //! The chosen location lives in core ([`ScanOptions`], `<data>/files.json`) because the scan
 //! reads it; the text being typed and its error message live in egui memory.
@@ -9,6 +10,7 @@ use cleancraft_core::features::duplicates::{KeepRule, apply_keep_rule};
 use cleancraft_core::features::large_old::{
     self, GroupBy, Location, ScanOptions, grouped_by, is_by_source, parse_folder, regroup,
 };
+use cleancraft_core::features::malware::ThreatDepth;
 use cleancraft_core::fsutil::human_size;
 use egui::{Id, Ui};
 
@@ -192,6 +194,48 @@ fn location_picker(app: &mut CleanApp, ui: &mut Ui, f: FeatureId) {
     });
     });
     ui.data_mut(|d| d.insert_temp(id, p));
+    ui.add_space(8.0);
+}
+
+/// Threat Check: how deep the next scan looks, kept in [`ScanOptions`].
+pub fn threat_depth_picker(app: &mut CleanApp, ui: &mut Ui) {
+    let t = app.t;
+    let current = ScanOptions::load(&app.env).threat_depth;
+    kit::card(&t).show(ui, |ui| {
+        ui.set_width(ui.available_width().min(600.0));
+        ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+            ui.spacing_mut().item_spacing.y = 4.0;
+            ui.horizontal(|ui| {
+                ui.label(
+                    crate::rich("How deep")
+                        .font(crate::theme::font(
+                            crate::theme::size::BODY,
+                            crate::theme::Weight::SemiBold,
+                        ))
+                        .color(t.text),
+                );
+                let r = kit::menu_pill(ui, &t, current.label(), |ui| {
+                    ui.set_min_width(180.0);
+                    for d in ThreatDepth::ALL {
+                        if kit::menu_choice(ui, d.label(), d == current) {
+                            app.act();
+                            let mut o = ScanOptions::load(&app.env);
+                            o.threat_depth = d;
+                            if let Err(e) = o.save(&app.env) {
+                                app.warn(format!("The choice could not be saved: {e}"));
+                            }
+                            ui.close();
+                        }
+                    }
+                });
+                if r.response.clicked() {
+                    app.act();
+                }
+            });
+            kit::dim(ui, &t, ScanOptions::load(&app.env).threat_depth.blurb());
+            super::threat_rules::lines(app, ui);
+        });
+    });
     ui.add_space(8.0);
 }
 

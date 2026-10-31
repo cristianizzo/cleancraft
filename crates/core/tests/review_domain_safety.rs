@@ -348,7 +348,7 @@ fn dom7_apple_app_moves_when_the_category_is_edited() {
     let mut q = Plan::new(FeatureId::Malware);
     push(&mut q, &numbers, "apps");
     let _ = features::run_plan(env, &s, &q, &q.digest(), &mut |_, _| {});
-    let _ = malware::Malware;
+    let _ = malware::Malware(Default::default());
 
     assert!(
         pages.exists(),

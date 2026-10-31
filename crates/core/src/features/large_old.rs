@@ -107,6 +107,8 @@ pub struct ScanOptions {
     pub duplicates: Location,
     /// How Large & Old Files groups its results.
     pub large_old_group: GroupBy,
+    /// How deep Threat Check looks.
+    pub threat_depth: super::malware::ThreatDepth,
 }
 
 /// How Large & Old Files groups its list.

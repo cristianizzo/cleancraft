@@ -16,6 +16,7 @@ pub fn before_scan(app: &mut CleanApp, ui: &mut Ui, f: FeatureId) {
         FeatureId::LargeOldFiles | FeatureId::Duplicates | FeatureId::SimilarPhotos => {
             super::extras_files::before_scan(app, ui, f)
         }
+        FeatureId::Malware => super::extras_files::threat_depth_picker(app, ui),
         _ => {}
     }
 }

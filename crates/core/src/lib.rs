@@ -15,6 +15,7 @@ pub mod features;
 pub mod fsutil;
 pub mod health;
 pub mod i18n;
+pub mod known_malware;
 pub mod login_agent;
 pub mod malware_rules;
 pub mod mcp_setup;
@@ -51,6 +52,7 @@ pub mod testkit_trash;
 pub mod testkit_update;
 pub mod updater;
 pub mod watch;
+pub mod xprotect;
 
 pub use env::{Env, Fault};
 pub use executor::{ActionKind, ActionRecord, Method, Report, SkipReason};
