@@ -1563,7 +1563,9 @@ pub fn rasterize(mesh: &Mesh, w: usize, h: usize, scale: f32, ss: usize) -> Vec<
     // Triangles in sample space with their bounding boxes.
     let tris: Vec<([(f32, f32); 3], [[f32; 4]; 3], f32, [f32; 4])> = mesh
         .indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .filter_map(|t| {
             let v = [0, 1, 2].map(|i| &mesh.vertices[t[i] as usize]);
             let p = v.map(|v| (v.pos.x * k, v.pos.y * k));
@@ -1833,7 +1835,9 @@ mod tests {
         let (mesh, _) = sphere_scene(&m).render(rect, 4.0);
         let px = rasterize(&mesh, 64, 64, 1.0, 4);
         let partial = px
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .filter(|p| p[3] > 10 && p[3] < 245)
             .count();
         assert!(partial > 40, "soft edge pixels: {partial}");
