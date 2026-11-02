@@ -107,10 +107,14 @@ cat > "$HELPER/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-echo "==> Signing (ad hoc)"
+# CLEANCRAFT_SIGN_IDENTITY (a certificate in the keychain) or ad hoc. An ad hoc signature is
+# tied to this exact build, so macOS forgets Full Disk Access when the app is replaced; one
+# certificate kept from release to release keeps it (release.yml sets this).
+SIGN="${CLEANCRAFT_SIGN_IDENTITY:--}"
+echo "==> Signing (${CLEANCRAFT_SIGN_IDENTITY:-ad hoc})"
 # Inner helper first, then the app around it.
-codesign --force --sign - "$HELPER"
-codesign --force --deep --sign - "$STAGE"
+codesign --force --sign "$SIGN" "$HELPER"
+codesign --force --deep --sign "$SIGN" "$STAGE"
 
 echo "==> Installing to $APP"
 if [[ -e "$APP" ]]; then

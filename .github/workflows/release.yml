@@ -2,7 +2,11 @@ name: Release
 
 # Push a tag like v0.2.0 (or run it by hand) to build CleanCraft.app on a GitHub Mac,
 # pack it as CleanCraft-<version>.dmg and attach it to a GitHub Release. The app is signed
-# ad hoc: on another Mac it must be allowed once in System Settings > Privacy & Security.
+# with the self-signed certificate in the CODESIGN_P12 and CODESIGN_P12_PASSWORD secrets, so
+# every version has the same signing requirement and macOS keeps Full Disk Access across
+# updates (an ad hoc signature changes with each build). Without the secrets it is signed ad
+# hoc. Either way it is not notarized: on another Mac it must be allowed once in System
+# Settings > Privacy & Security.
 on:
   push:
     tags: ["v*"]
@@ -22,6 +26,28 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Load the signing certificate
+        env:
+          P12: ${{ secrets.CODESIGN_P12 }}
+          P12_PASSWORD: ${{ secrets.CODESIGN_P12_PASSWORD }}
+        run: |
+          if [ -z "$P12" ]; then
+            echo "::warning::No CODESIGN_P12 secret: signing ad hoc, so users must allow Full Disk Access again after this update."
+            exit 0
+          fi
+          KC="$RUNNER_TEMP/sign.keychain-db"
+          security create-keychain -p "" "$KC"
+          security set-keychain-settings "$KC"
+          security unlock-keychain -p "" "$KC"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/sign.p12"
+          security import "$RUNNER_TEMP/sign.p12" -k "$KC" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/sign.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          # Self-signed, so not trusted: codesign takes it by its SHA-1, not by name.
+          ID="$(security find-identity -p codesigning "$KC" | awk '$1 == "1)" {print $2; exit}')"
+          [ -n "$ID" ] || { echo "::error::The CODESIGN_P12 secret holds no code signing identity."; exit 1; }
+          echo "CLEANCRAFT_SIGN_IDENTITY=$ID" >> "$GITHUB_ENV"
       - name: Build the app bundle
         run: APP_DIR="$PWD/dist" bash scripts/install-app.sh
       - name: Make the disk image
