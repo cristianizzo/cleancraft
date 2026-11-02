@@ -863,7 +863,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "cleancraft"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "anyhow",
  "chrono",
@@ -886,7 +886,7 @@ dependencies = [
 
 [[package]]
 name = "cleancraft-core"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "anyhow",
  "blake3",
@@ -908,7 +908,7 @@ dependencies = [
 
 [[package]]
 name = "cleancraft-mcp"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "anyhow",
  "cleancraft-core",
@@ -921,7 +921,7 @@ dependencies = [
 
 [[package]]
 name = "cleancraft-ui-egui"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "anyhow",
  "chrono",
