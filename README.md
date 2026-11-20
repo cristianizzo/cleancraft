@@ -8,7 +8,7 @@ An original macOS cleaner and maintenance app, written in Rust (egui), with a co
 
 - **Quick Sweep**: one scan across System Junk, Trash Bins, Mail Downloads, Threat Check, duplicate downloads, developer clutter, tune-up suggestions and app updates. Pick the modules to include.
 - **Clean**: System Junk, Mail Downloads, Trash Bins, Developer Clutter (old Rust `target/`, `node_modules`, Python environments, unused simulators).
-- **Protect**: Threat Check and Privacy Traces.
+- **Protect**: Threat Check, Privacy Traces and Security Check (FileVault, firewall, automatic login, guest account, screen lock).
 - **Speed**: Tune-up Tasks and Startup Items.
 - **Apps**: App Remover (with leftovers, several apps at once) and App Updates.
 - **Files**: Large & Old Files, Duplicates, Similar Images, Disk Map.
